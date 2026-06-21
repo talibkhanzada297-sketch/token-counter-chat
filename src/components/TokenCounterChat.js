@@ -1,136 +1,81 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { encoding_for_model } from 'js-tiktoken';
 import '../styles/TokenCounterChat.css';
 
 const TokenCounterChat = () => {
   const [messages, setMessages] = useState([]);
   const [currentInput, setCurrentInput] = useState('');
-  const [tokenInfo, setTokenInfo] = useState({
-    currentMessage: 0,
-    totalConversation: 0,
-  });
   const [selectedModel, setSelectedModel] = useState('gpt-3.5-turbo');
   const [isLoading, setIsLoading] = useState(false);
 
-  const AVAILABLE_MODELS = [
-    { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' },
+  const MODELS = [
+    { id: 'gpt-3.5-turbo', name: 'GPT-3.5' },
     { id: 'gpt-4', name: 'GPT-4' },
-    { id: 'gpt-4-turbo-preview', name: 'GPT-4 Turbo' },
     { id: 'claude-3-sonnet', name: 'Claude 3' },
   ];
 
   const PRICING = {
-    'gpt-3.5-turbo': { input: 0.0005, output: 0.0015 },
-    'gpt-4': { input: 0.03, output: 0.06 },
-    'gpt-4-turbo-preview': { input: 0.01, output: 0.03 },
-    'claude-3-sonnet': { input: 0.003, output: 0.015 },
+    'gpt-3.5-turbo': 0.0005,
+    'gpt-4': 0.03,
+    'claude-3-sonnet': 0.003,
   };
 
   const countTokens = (text, model) => {
     try {
-      if (!text) return 0;
       const enc = encoding_for_model(model);
       return enc.encode(text).length;
-    } catch (error) {
+    } catch {
       return Math.ceil(text.length / 4);
     }
   };
 
-  const calculateTotalTokens = (msgs) => {
-    return msgs.reduce((total, msg) => total + countTokens(msg.content, selectedModel), 0);
-  };
+  const totalTokens = messages.reduce((sum, msg) => sum + countTokens(msg.content, selectedModel), 0);
+  const currentTokens = countTokens(currentInput, selectedModel);
+  const estimatedCost = (totalTokens / 1000 * PRICING[selectedModel]).toFixed(4);
 
-  const handleInputChange = (e) => {
-    const text = e.target.value;
-    setCurrentInput(text);
-    setTokenInfo({
-      currentMessage: countTokens(text, selectedModel),
-      totalConversation: calculateTotalTokens(messages),
-    });
-  };
-
-  const handleSendMessage = () => {
+  const handleSend = () => {
     if (!currentInput.trim()) return;
+    
+    setMessages([...messages, 
+      { id: Date.now(), role: 'user', content: currentInput, tokens: currentTokens }
+    ]);
+
     setIsLoading(true);
-
-    const userMessage = {
-      id: Date.now(),
-      content: currentInput,
-      role: 'user',
-      timestamp: new Date(),
-      tokens: countTokens(currentInput, selectedModel),
-    };
-
-    const updatedMessages = [...messages, userMessage];
-    setMessages(updatedMessages);
-
     setTimeout(() => {
-      const assistantMessage = {
-        id: Date.now() + 1,
-        content: 'Hello! This is a mock response.',
-        role: 'assistant',
-        timestamp: new Date(),
-        tokens: 0,
-      };
-      assistantMessage.tokens = countTokens(assistantMessage.content, selectedModel);
-      setMessages([...updatedMessages, assistantMessage]);
+      setMessages(prev => [...prev,
+        { id: Date.now() + 1, role: 'assistant', content: 'Hello! How can I help?', tokens: 8 }
+      ]);
       setIsLoading(false);
     }, 1000);
 
     setCurrentInput('');
-    setTokenInfo({
-      currentMessage: 0,
-      totalConversation: calculateTotalTokens(updatedMessages),
-    });
-  };
-
-  const estimateCost = () => {
-    const prices = PRICING[selectedModel] || PRICING['gpt-3.5-turbo'];
-    return ((tokenInfo.totalConversation / 1000) * prices.input).toFixed(4);
   };
 
   return (
     <div className="token-counter-chat">
       <div className="control-panel">
-        <div className="model-selector">
-          <label>Select Model:</label>
-          <select value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)} className="model-dropdown">
-            {AVAILABLE_MODELS.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
-        </div>
+        <label>Model:</label>
+        <select value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)}>
+          {MODELS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
       </div>
 
       <div className="stats-container">
-        <div className="stat-box">
-          <p className="token-count">{tokenInfo.currentMessage}</p>
-          <span>Current</span>
-        </div>
-        <div className="stat-box">
-          <p className="token-count">{tokenInfo.totalConversation}</p>
-          <span>Total</span>
-        </div>
-        <div className="stat-box">
-          <p className="token-count">${estimateCost()}</p>
-          <span>Cost</span>
-        </div>
+        <div className="stat-box"><p>{currentTokens}</p><span>Current</span></div>
+        <div className="stat-box"><p>{totalTokens}</p><span>Total</span></div>
+        <div className="stat-box"><p>${estimatedCost}</p><span>Cost</span></div>
       </div>
 
       <div className="messages-container">
-        {messages.length === 0 ? (
-          <p>No messages yet. Start typing!</p>
-        ) : (
-          <div className="messages-list">
-            {messages.map((msg) => (
-              <div key={msg.id} className={'message message-' + msg.role}>
-                <strong>{msg.role.toUpperCase()}</strong>: {msg.content} ({msg.tokens} tokens)
-              </div>
-            ))}
+        {messages.map(msg => (
+          <div key={msg.id} className={'message message-' + msg.role}>
+            <strong>{msg.role}</strong>: {msg.content} ({msg.tokens} tokens)
           </div>
-        )}
+        ))}
       </div>
 
-      <textarea value={currentInput} onChange={handleInputChange} placeholder="Type message..." className="input-textarea" disabled={isLoading} />
-      <button onClick={handleSendMessage} disabled={isLoading || !currentInput.trim()} className="send-button">
+      <textarea value={currentInput} onChange={(e) => setCurrentInput(e.target.value)} placeholder="Type..." />
+      <button onClick={handleSend} disabled={isLoading}>
         {isLoading ? 'Sending...' : 'Send'}
       </button>
     </div>
